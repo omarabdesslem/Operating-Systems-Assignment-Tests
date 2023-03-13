@@ -12,11 +12,12 @@ int main(int argc,char** argv){
   int fileoption=0;
   int t_exists=0;
   int i = argc - 1;
-  options(argc, argv, md_a, &fileoption, &t_exists);
-  if (fileoption){
-       digest_fichier(argv[i],  md_a);}
-  
-  else {
-    digest_message(argv[i], md_a);}
-  
+  if (argc>1){
+	  options(argc, argv, md_a, &fileoption, &t_exists);
+	  if (fileoption){
+	       digest_fichier(argv[i],  md_a);}
+	  
+	  else {
+	    printf("%s", digest_message(argv[i], md_a));}
+	  }
 };

@@ -19,14 +19,13 @@ int digest_message(char* msg, const EVP_MD *md)
     EVP_DigestInit_ex(mdctx, md, NULL);
     EVP_DigestUpdate(mdctx, msg, strlen(msg)); //processes the input string
     EVP_DigestFinal_ex(mdctx, md_value, &md_len); //calculates the final hash value
-    for (i = 0; i < md_len-1; i++)
+    for (i = 0; i < md_len; i++)
         printf("%02x", md_value[i]);
     printf("  %s\n",msg);
     EVP_MD_CTX_free(mdctx);
 
     return 0;
 }
-
 
 int digest_fichier(char* nom_du_fichier, const EVP_MD *md) //prend comme paramètres le message_digest_type (sha1, sha256), le msg qu'on va hashé
 {
@@ -36,10 +35,8 @@ int digest_fichier(char* nom_du_fichier, const EVP_MD *md) //prend comme paramè
     unsigned char buf[4096];
     md = EVP_get_digestbyname("sha1");
     size_t n;
-    printf("Initialisation OK\n");
     FILE *f = fopen(nom_du_fichier, "r");
     if (f == NULL) {
-        printf("Ce fichier n'existe pas\n");
        return 0;
     }
 
@@ -47,15 +44,15 @@ int digest_fichier(char* nom_du_fichier, const EVP_MD *md) //prend comme paramè
     mdctx = EVP_MD_CTX_new(); //create structure of EVP_MD_CTX
     EVP_DigestInit_ex(mdctx, md, NULL);
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-    EVP_DigestUpdate(mdctx, nom_du_fichier, strlen(nom_du_fichier)); //processes the input string
+    EVP_DigestUpdate(mdctx, buf, n); //processes the input string
     }
     EVP_DigestFinal_ex(mdctx, md_value, &md_len); //calculates the final hash value
-    
 
     for (i = 0; i < md_len; i++)
         printf("%02x", md_value[i]);
     printf("  %s\n",nom_du_fichier);
     EVP_MD_CTX_free(mdctx);
+    printf("EVP_MD_CTX_freed\n");
 
     return 0;
 }
