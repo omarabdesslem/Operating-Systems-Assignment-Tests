@@ -18,7 +18,6 @@ class bcolors:
     Magenta = '\033[95m'
     Grey = '\033[90m'
     Black = '\033[90m'
-    Default = '\033[99m'
     
     def disable(self):
         self.Red = ''
@@ -30,7 +29,6 @@ class bcolors:
         self.Magenta = ''
         self.Grey = ''
         self.Black = ''
-        self.Default = ''
         self.FAIL = ''
         self.ENDC = ''
 
