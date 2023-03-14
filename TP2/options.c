@@ -5,7 +5,7 @@
 #include "options.h"
 
 
-int options(int argc, char **argv, const EVP_MD *md,  int *fileoption,int* t_exists)
+int options(int argc, char **argv, const EVP_MD *md,  int *fileoption,int* t_exists, int* t_value_exists)
 {
   char *tvalue;
   int index;
@@ -17,15 +17,13 @@ int options(int argc, char **argv, const EVP_MD *md,  int *fileoption,int* t_exi
       {
       case 'f':
         *fileoption = 1;
-        printf("f exists   \n \n");
-        printf("  \n");
         break;
       case 't':
-        tvalue = optarg;
+      	tvalue = optarg;
+        if (tvalue!=NULL) {
+        *t_value_exists = 1;
         *t_exists = 1;
 	md = EVP_get_digestbyname(tvalue);
-	printf("t exists\n");
-  printf("  \n");
         break;
       case '?':
         if (optopt == 't')
@@ -38,7 +36,8 @@ int options(int argc, char **argv, const EVP_MD *md,  int *fileoption,int* t_exi
         abort ();
       }
               }  
-       if (md == 0) md = EVP_get_digestbyname("sha1"); 
+       if (md == 0) md = EVP_get_digestbyname("sha1");
+}
 }
 
 /*int main(int argc, char **argv){

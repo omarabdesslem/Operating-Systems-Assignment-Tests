@@ -50,18 +50,11 @@ int digest_fichier(char* nom_du_fichier, const EVP_MD *md) //prend comme paramè
 
     for (i = 0; i < md_len; i++)
         printf("%02x", md_value[i]);
-    printf("  %s\n",nom_du_fichier);
+    printf(" %s\n",nom_du_fichier);
     EVP_MD_CTX_free(mdctx);
-    printf("EVP_MD_CTX_freed\n");
 
     return 0;
 }
 
 
-
-/*int main(){
-char* msg="le man disait";
-printf("%d", digest_message(msg));
-digest_fichier("texte.txt");
-return 0;}*/
 

@@ -11,13 +11,21 @@ int main(int argc,char** argv){
   int f=0;
   int fileoption=0;
   int t_exists=0;
+  int t_value_exists=0;
   int i = argc - 1;
+  int endings=-1;
   if (argc>1){
-	  options(argc, argv, md_a, &fileoption, &t_exists);
+	  options(argc, argv, md_a, &fileoption, &t_exists, &t_value_exists);
 	  if (fileoption){
-	       digest_fichier(argv[i],  md_a);}
-	  
+	  	if(t_exists){
+		i -=2;
+		for(int j=4; j<=argc-1; j++){
+			digest_fichier(argv[j], md_a);
+		}}
+	       	else{ for(int j=2; j<=argc-1; j++){
+                	digest_fichier(argv[j], md_a);}
+	  }}
 	  else {
-	    printf("%s", digest_message(argv[i], md_a));}
+	    digest_message(argv[i], md_a);}
 	  }
 };

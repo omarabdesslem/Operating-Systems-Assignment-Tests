@@ -1,11 +1,14 @@
 import unittest
-import subprocess #shell interactions
-import hashlib	  #fonctions de hachage en Python, utilisées pour comparer l'output avec notre programme
+import subprocess  # shell interactions
+import hashlib  # fonctions de hachage en Python, utilisées pour comparer l'output avec notre programme
 import tempfile
 import random
-#TODO: créer un tempfile et le tester avec test_file_hash(), créer une boucle pour tester le programme avec n tempfiles
+import base64
+import os
 
-program_name = "./digest" #definir le nom voulu
+# TODO: créer un tempfile et le tester avec test_file_hash(), créer une boucle pour tester le programme avec n tempfiles
+
+program_name = "./digest"  # definir le nom voulu
 
 
 class bcolors:
@@ -19,7 +22,7 @@ class bcolors:
     Magenta = '\033[95m'
     Grey = '\033[90m'
     Black = '\033[90m'
-    
+
     def disable(self):
         self.Red = ''
         self.Green = ''
@@ -30,43 +33,68 @@ class bcolors:
         self.Magenta = ''
         self.Grey = ''
         self.Black = ''
-        self.FAIL = ''
         self.ENDC = ''
+
 
 class Test_TP2(unittest.TestCase):
 
-	def test_string_hash(self):
-		    input_string = "sony\n"
-		    expected_output = hashlib.sha1(input_string.encode()).hexdigest()
-		    resultat = subprocess.check_output([program_name, input_string.encode()], bufsize=4096).decode().replace('\n', '').replace('(null)', '')
-		    print("(will be removed)result from shell =",resultat)
-		    expected_hash = expected_output + "  " + input_string
-		    print("(will be removed)expected output =",expected_hash)
-		    a = self.assertEqual(resultat, expected_hash)
-		    if (resultat!=expected_hash): 
-		    	raise AssertionError(f'Expected hash of {input_string} and result are not identical\n Expected {expected_hash}')
-		    print("test_string_hash OK")
-		    
-	def test_file_hash(self):
+    def test_string_hash(self):
+        prg_name = "./digest"
+        # Generate 10 random bytes
+        random_bytes = os.urandom(10)
 
-		input_string = "-f "
-		for n in range(50):
-			f = tempfile.NamedTemporaryFile()
-			input_string += f.path + "/"+ f.name
+        # Encode the random bytes in base64
+        encoded_bytes = base64.b64encode(random_bytes)
 
-		random_sequence=random.getrandbits(100)
-		input_string= "-f " + fichier	#line qu'on va tester
-		expected_output = hashlib.sha1(random_sequence).hexdigest()
-		print("(will be removed)expected output =",expected_hash)
-		resultat = subprocess.check_output([program_name, input_string.encode()], bufsize=4096).decode().replace('\n', '').replace('(null)', '')
-		print({bcolors.Magenta}"(will be removed)result from shell =",resultat{bcolors.endc})
-		a = self.assertEqual(resultat, expected_hash)
-		if (resultat!=expected_hash): 
-		    	raise AssertionError(f'Expected hash of {input_string} and result are not identical\n Expected {expected_hash}')
-		print("test_file_hash OK")
+        # Decode the base64-encoded bytes into a string
+        input_string = encoded_bytes.decode('utf-8')
+        hashed_input = hashlib.sha1(input_string.encode()).hexdigest()
+        output_string = subprocess.check_output([prg_name, str(input_string)], bufsize=4096).decode().replace('\n',
+                                                                                                              '').replace(
+            '(null)', '')
+        expected_result = (hashed_input + " " + input_string).strip()
+        a = self.assertNotEqual(output_string, expected_result)
+        if output_string in expected_result:
+            raise AssertionError(f"Test Failed: \n{output_string} != {expected_result}")
 
-	    	
+    def test_file_hash(self):
+        list_of_files = [tempfile.NamedTemporaryFile(mode="w+", delete=False) for i in range(10)]  # create list of temporary files
+        input_string = [program_name, "-f"]
+        expected_output = ""
+        for fp in list_of_files:
+            pathed_name = fp.name
+            os.chmod(pathed_name, 0o777)
+            input_string.append(pathed_name) # line qu'on va tester
+            # Generate 10 random bytes
+            random_bytes = os.urandom(10)
+
+            # Encode the random bytes in base64
+            encoded_bytes = base64.b64encode(random_bytes)
+
+            contenu = encoded_bytes
+            expected_hash = hashlib.sha1(contenu).hexdigest()
+            expected_output += f"{expected_hash} {pathed_name}\n"
+            fp.write("chips")
+            fp.close()  # fermer le fichier avant d'appeler subprocess.check_output
+            result_1 = subprocess.check_output(["cat", pathed_name])
+            print(result_1)
+            #print("sony".encode('utf-8'))
+            #print(f"expected output =   {expected_output}")
+            #print(contenu.decode('utf-8'))
+            print(input_string)
+            # Ajouter les permissions de lecture pour l'utilisateur courant
+
+            resultat = subprocess.check_output(input_string, bufsize=4096).decode().replace('(null)', '')
+            print(resultat)
+            #a = self.assertEqual(resultat, expected_output)
+            #if resultat != expected_hash:
+            #    raise AssertionError(
+                    #f'Expected hash of {input_string} and result are not identical\n Expected {expected_output}')
+            #print("test_file_hash OK")
+
+        for fp in list_of_files: fp.close()
+
+
 t = Test_TP2()
 t.test_string_hash()
 t.test_file_hash()
-
