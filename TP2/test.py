@@ -101,7 +101,7 @@ class Test_TP2(unittest.TestCase):
             print(f"Shell command: {' '.join(input_string)}")
             resultat = subprocess.check_output(input_string, bufsize=4096).decode().replace('(null)', '')
             print(f"{bcolors.Blue}Expected output:\n{bcolors.ENDC}{expected_output}")
-            print(resultat)
+            print(f"{bcolors.Blue}Result:\n{bcolors.ENDC}{resultat}")
             a = self.assertEqual(resultat, expected_output)
             # if resultat != expected_hash:
             #    raise AssertionError(
@@ -163,7 +163,7 @@ class Test_TP2(unittest.TestCase):
             print(f"Shell command: {' '.join(input_string)}")
             resultat = subprocess.check_output(input_string, bufsize=4096).decode().replace('(null)', '')
             print(f"{bcolors.Blue}Expected output:\n{bcolors.ENDC}{expected_output}")
-            print(resultat)
+            print(f"{bcolors.Blue}Result:\n{bcolors.ENDC}{resultat}")
             a = self.assertEqual(resultat, expected_output)
             # if resultat != expected_hash:
             #    raise AssertionError(
@@ -177,4 +177,6 @@ t.test_string_hash()
 t.test_file_hash()
 t.test_string_hash_md5()
 t.test_file_hash_md5()
+
+
 
