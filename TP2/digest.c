@@ -20,7 +20,6 @@ int digest_message(char* msg,const EVP_MD *md)
     EVP_DigestFinal_ex(mdctx, md_value, &md_len); //calculates the final hash value
     for (i = 0; i < md_len; i++)
         printf("%02x", md_value[i]);
-    printf(" %s\n",msg);
     EVP_MD_CTX_free(mdctx);
 
     return 0;
