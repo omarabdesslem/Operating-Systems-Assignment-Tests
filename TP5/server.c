@@ -38,7 +38,7 @@ int make_server_socket(uint16_t port){
 //server protocol
 void server_accept(int sfd){
     printf("**************** SERVER ****************\n");
-    while(1){//loop in whitch we are accepting clients
+    while(1){//loop in which we are accepting clients
         char * adr_str=malloc(16);
         struct sockaddr_in caddr;
         socklen_t caddr_len=sizeof(caddr);

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 
-import unittest
-import subprocess
-import socket
-import tempfile
-import random
-import base64
-import os
-import sys
-import logging
 import argparse
+import socket
+import sys
+import random  # for ip adress generation
+
+##valeurs par defaults
+number_servers = 5
+NB_TRY = 10
+TOO_HIGH = 1
+TOO_LOW = 2
+WIN = 3
+LOOSE = 4
+F_MASK = 0xFF
+IP = "127.0.0.1"
 
 
 class bcolors:
@@ -39,18 +43,14 @@ class bcolors:
 
 test_failed = False
 
-def check(expected_hash, resultat):
-    if expected_hash not in resultat:
-        raise AssertionError(f'Expected hash of {expected_hash} and result are not identical {resultat}\n')
 
-
-def test(func):
-    def wrapper(self):
+def test(func, *args):
+    def wrapper(self, *args):
         global test_failed
         print(func.__name__.upper() + ": ", end="")
         try:
-            func(self)
-        except AssertionError or FileNotFoundError or AttributeError as e:
+            func(self, *args)
+        except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError) as e:
             print(bcolors.Red + "FAILED" + bcolors.ENDC)
             print(str(e))
             test_failed = True
@@ -60,92 +60,82 @@ def test(func):
     return wrapper
 
 
+class Test():
+    def generate_random_ip(self):
+        octets = [random.randint(0, 255) for i in range(4)]  # generation de 4 octets random
+        ip_address = '.'.join(str(octet) for octet in octets)
+        return ip_address
 
-class Test(unittest.TestCase):
-    def hash_string_compare(self, hash_type):
-        random_bytes = os.urandom(hash_length)
-        encoded_bytes = base64.b64encode(random_bytes) #convertir la chaine de bits en ascii en utilisant la base 64, étape necessaire
-        random_string = encoded_bytes.decode('utf-8') #convertir la séquence de bytes en string avec decode
-        if hash_type == 'md5':
-            input_string = [program_name, str(random_string), "-t", "md5"]
-            hashed_input = hashlib.md5(random_string.encode()).hexdigest()
-        else:
-            hashed_input = hashlib.sha1(random_string.encode()).hexdigest()
-            input_string = [program_name, str(random_string)]
-        output_string = subprocess.check_output(input_string,
-                                                bufsize=4096).decode()
-        check(hashed_input, output_string)
-
-    def hash_file_compare(self, hash_type):
-        list_of_files = [tempfile.NamedTemporaryFile(mode="w+", delete=False) for i in
-                         range(file_number)]  # create list of temporary files
-        expected_output = ""
-        if hash_type == 'md5':
-            input_string = [program_name, "-f", "-t", "md5"]
-        else:
-            input_string = [program_name, "-f"]
-        for fp in list_of_files:
-            pathed_name = fp.name
-            os.chmod(pathed_name, 0o777)
-            input_string.append(pathed_name)  # line qu'on va tester
-            random_bytes = os.urandom(hash_length)
-            if hash_type == 'md5':
-                input_string.remove("-t")
-                input_string.remove("md5")
-            # Encode the random bytes in base64 ==> letters/symbols
-            contenu = base64.b64encode(random_bytes)
-            if hash_type == 'md5':
-                expected_hash = hashlib.md5(contenu).hexdigest()
-            else:
-                expected_hash = hashlib.sha1(contenu).hexdigest()
-            fp.write(contenu.decode('utf-8'))  # ecrit contenu dans le fichier
-            fp.close()  # fermer le fichier avant d'appeler subprocess.check_output
-            if hash_type == 'md5':
-                input_string.append("-t")
-                input_string.append("md5")
-            resultat = subprocess.check_output(input_string, bufsize=4096).decode()
-            check(expected_hash, resultat)
-        for fp in list_of_files:
-            os.unlink(fp.name)
+    def connect_to_server(self, host, port):
+        # create socket
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((host, port))
+        print('Connected to server')
+        return client_socket
 
     @test
-    def test_string_hash(self):
-        self.hash_string_compare("sha1")
+    def test_connect(self, client_socket):
+        if client_socket is None:
+            raise Exception(f"Client server connection failed")
 
     @test
-    def test_file_hash(self):
-        self.hash_file_compare("sha1")
+    def client_request(self, cfd):
+        sys.stdout.flush()
+        n = 0
+        action = ''
+        while n < NB_TRY:
+            data = cfd.recv(2)  # donnèes entrantes du serveur
+
+            if not data:  # on sort si on reçoit pas de donnèes
+                break
+
+            entry = int(data[0])
+
+            switch = {
+                TOO_HIGH: 'High',
+                TOO_LOW: 'Low',
+                WIN: 'Win',
+                LOOSE: 'Lose'
+            }
+
+            if action == 'Win':
+                sys.exit(0)
+            elif action == 'SCANNING FAILURE':
+                break
+
+            entry = int(input())
+            if entry > F_MASK:
+                print('Input should be between 0 and 255')
+                break
+            # d = uint8_t(data_to_be_sent)
+            cfd.send()  #
 
     @test
-    def test_string_hash_md5(self):
-        self.hash_string_compare("md5")
-
-    @test
-    def test_file_hash_md5(self):
-        self.hash_file_compare("md5")
+    def multiple_clients_test(self, port, n):
+        for i in range(n):
+            # create socket
+            host = self.generate_random_ip()
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((host, port))
+            print('Connected to server')
+            if socket is None:
+                raise Exception(f"Client server connection failed")
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description='Test pour valider le bon fonctionnement du TP Hash Digest du cours de Système '
-                                                 'd\'exploitation.' )
-    parser.add_argument('client_program_name', type=str, help='path de votre programme digest')
-    parser.add_argument('server_program_name', type=str, help='path de votre programme digest')
+    parser = argparse.ArgumentParser(description='Test pour verifier le bon fonctionnement de votre TP')
+    parser.add_argument('program_name', type=str, help='path de votre programme digest')
+    parser.add_argument('port', type=int, help='port number for server connection')
+    parser.add_argument('-i', '--ip_adress', type=str, help='prend une adresse ip comme agrument')
     args = parser.parse_args()
     program_name = args.program_name
-
-    if len(sys.argv) > 1:
-        program_name = sys.argv[1]
-        t = Test()
-        print(bcolors.Blue + '--- BEGIN TEST ---\n' + bcolors.ENDC)
-        print(bcolors.Blue + '--- TESTING STRING_HASH ---' + bcolors.ENDC)
-        t.test_string_hash()
-        print(bcolors.Blue + '--- TESTING FILE_HASH ---' + bcolors.ENDC)
-        t.test_file_hash()
-        print(bcolors.Blue + '--- TESTING MD5 STRING_HASH ---' + bcolors.ENDC)
-        t.test_string_hash_md5()
-        print(bcolors.Blue + '--- TESTING MD5 FILE_HASH ---' + bcolors.ENDC)
-        t.test_file_hash_md5()
-        print(bcolors.Blue + '\n--- END TEST ---' + bcolors.ENDC)
-    else:
-        print("Test requires program name. Example: Digest")
+    PORT = args.port
+    if args.ip_adress:
+        IP = args.ip_adress
+    t = Test()
+    print(bcolors.Magenta + '--- BEGIN TEST ---\n' + bcolors.ENDC)
+    client_socket = t.connect_to_server(IP, PORT)
+    t.test_connect(client_socket)
+    t.multiple_clients_test(PORT, number_servers)
+    # t.client_request(client_socket)
+    print(bcolors.Magenta + '--- END TEST ---' + bcolors.ENDC)
