@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-
 import argparse
 import socket
+import struct
 import sys
 import random  # for ip adress generation
 
@@ -9,9 +9,9 @@ import random  # for ip adress generation
 number_servers = 5
 NB_TRY = 10
 TOO_HIGH = 1
-TOO_LOW = 2
-WIN = 3
-LOOSE = 4
+TOO_LOW = -1
+WIN = 0
+LOOSE = -2
 F_MASK = 0xFF
 IP = "127.0.0.1"
 
@@ -64,12 +64,25 @@ class Test():
     def generate_random_ip(self):
         octets = [random.randint(0, 255) for i in range(4)]  # generation de 4 octets random
         ip_address = '.'.join(str(octet) for octet in octets)
+        print(ip_address)
         return ip_address
+
+    def check_ip_in_use(self, ip, port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((ip, port))
+        sock.close()
+        if result == 0:
+            print("IP IN USE")
+            return True
+        else:
+            print("IP NOT IN USE")
+            return False
+
 
     def connect_to_server(self, host, port):
         # create socket
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((host, port))
+        client_socket.connect_ex((host, port))
         print('Connected to server')
         return client_socket
 
@@ -78,48 +91,63 @@ class Test():
         if client_socket is None:
             raise Exception(f"Client server connection failed")
 
-    @test
+
     def client_request(self, cfd):
         sys.stdout.flush()
-        n = 0
-        action = ''
-        while n < NB_TRY:
-            data = cfd.recv(1)  # donnèes entrantes du serveur
-        #returns bytes object
-            if not data:  # on sort si on reçoit pas de donnèes
-                break
+        end, start = struct.unpack('BB', cfd.recv(2))
+        #'BB': two byte sized ints
+        #retourne deux objects d'unpacked format, ici c'est u_int8t
 
-            entry = int(data[0])
+        #status = cfd.recv(1).decode('utf-8')  # donnèes entrantes du serveur #doesn't work
+        #data = ctypes.c_int8(int(cfd.recv(1)))
+        # u_int8t n'existe pas en Py, on utilise ctypes
+        #status = ctypes.c_int8(int(status))
+        print(end, start)
 
-            switch = {
-                TOO_HIGH: 'High',
-                TOO_LOW: 'Low',
-                WIN: 'Win',
-                LOOSE: 'Lose'
-            }
+        guess = random.randint(0, 255)  #on envoit un guess random au début, pour recevoir la réponse correcte
 
-            if action == 'Win':
-                sys.exit(0)
-            elif action == 'SCANNING FAILURE':
-                break
+        buf = (guess << 8) | 0  # GUESS | 0 0 0 0 0 0 0 0 0 pour que le second byte soit set to 0
+        client_socket.sendall(struct.pack('>H', buf))
+        #>H: signed short integer, 2 octets, big endian >
 
-            entry = int(input())
-            if entry > F_MASK:
-                print('Input should be between 0 and 255')
-                break
-            # d = uint8_t(data_to_be_sent)
-            cfd.send()  #
+        data = client_socket.recv(2)
+        number, response = struct.unpack('>BB', data)
+        print(response, number)
 
-    @test
+        buf = number | 0  # GUESS | 0 0 0 0 0 0 0 0 0 pour que le second byte soit set to 0
+        client_socket.sendall(struct.pack('>H', buf))
+
+        data = client_socket.recv(2)
+        number, response = struct.unpack('>BB', data)
+        print(response, number)
+        #ça sera une fonction handle, pour tester low, high, etc..
+        switch = {
+            TOO_HIGH: 'High',
+            TOO_LOW: 'Low',
+            WIN: 'Win',
+            LOOSE: 'Lose'
+        }
+        if response == WIN:
+            print(f'WIN! You guessed the number {number}')
+
+        elif response == TOO_LOW % 256: #le mod est tres important, too low donne 255
+            print(f'The number is higher than {guess}')
+            start = number
+        elif response == TOO_HIGH:
+            print(f'The number is lower than {guess}')
+            end = number
+
     def multiple_clients_test(self, port, n):
         for i in range(n):
-            # create socket
+
+            #getting a valid ip
             host = self.generate_random_ip()
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((host, port))
-            print('Connected to server')
-            if socket is None:
-                raise Exception(f"Client server connection failed")
+            #while (self.check_ip_in_use(host, port)):
+            #    host = self.generate_random_ip()
+            #connect to server function
+            client_socket = self.connect_to_server(host, port)
+            #test connection
+            self.test_connect(client_socket)
 
 
 if __name__ == "__main__":
@@ -136,6 +164,6 @@ if __name__ == "__main__":
     print(bcolors.Magenta + '--- BEGIN TEST ---\n' + bcolors.ENDC)
     client_socket = t.connect_to_server(IP, PORT)
     t.test_connect(client_socket)
-    t.multiple_clients_test(PORT, number_servers)
-    # t.client_request(client_socket)
+    #t.multiple_clients_test(PORT, number_servers)
+    t.client_request(client_socket)
     print(bcolors.Magenta + '--- END TEST ---' + bcolors.ENDC)
