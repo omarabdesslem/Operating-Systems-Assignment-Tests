@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import random
 import socket
 import struct
 import sys
-import random  # for ip adress generation
+import subprocess
+import string  # for client names
+import time  # for waiting
+import multiprocessing #for launching multiple clients simultaneously
 
 ##valeurs par defaults
 number_servers = 5
@@ -13,8 +17,12 @@ TOO_LOW = -1
 WIN = 0
 LOOSE = -2
 F_MASK = 0xFF
+# IP = "10.194.68.29"
 IP = "127.0.0.1"
 
+
+# lancer serveur de l'etudiant
+# choisir port
 
 class bcolors:
     ENDC = '\033[0m'
@@ -61,23 +69,18 @@ def test(func, *args):
 
 
 class Test():
-    def generate_random_ip(self):
-        octets = [random.randint(0, 255) for i in range(4)]  # generation de 4 octets random
-        ip_address = '.'.join(str(octet) for octet in octets)
-        print(ip_address)
-        return ip_address
 
-    def check_ip_in_use(self, ip, port):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex((ip, port))
-        sock.close()
-        if result == 0:
-            print("IP IN USE")
-            return True
-        else:
-            print("IP NOT IN USE")
-            return False
+    def wait(self):
+        period = random.uniform(2, 5)
+        time.sleep(period)
 
+    @test
+    def launch_program(self):
+        terminal_command = f'gnome-terminal -- bash -c "{program_name} {str(PORT)}; exec bash"'
+
+        # lancer le terminal avec cette commande, shell = True pour prendre la commande en totale, pas comme une liste d'args
+        subprocess.run(terminal_command, shell=True)
+        self.wait()
 
     def connect_to_server(self, host, port):
         # create socket
@@ -91,63 +94,161 @@ class Test():
         if client_socket is None:
             raise Exception(f"Client server connection failed")
 
+    def play(self, cfd):
 
+        sys.stdout.flush()
+        mode = 0
+        for i in range(NB_TRY):
+            data = cfd.recv(8)
+            try:
+                begin, end = struct.unpack('ii', data)
+            except (SyntaxError, struct.error) as e:
+                try:
+                    begin, end = struct.unpack('HH', data)
+                    mode = 1
+                except (SyntaxError, struct.error) as e:
+                    try:
+                        print(f"try {i}\n")
+                        begin, end = struct.unpack('BB', data)
+                        mode = 2
+                    except:
+                        begin, end = struct.unpack('B', data)
+                        mode = 3
+
+            print(f"mode = {mode}\ntaille = {len(data)}\n")
+            print(f"received: {begin, end}\nrecv_packed_data: {data}\n")
+            switch = {
+                TOO_HIGH: 'High',
+                TOO_LOW: 'Low',
+                WIN: 'Win',
+                LOOSE: 'Lose'
+            }
+            print(f"High/Low value ={begin}")
+            if begin == WIN:
+                if i > 0:
+                    print(f'WIN! You guessed the number {end}')
+                    cfd.close()
+                    break
+            elif begin == TOO_LOW % 256 or begin == TOO_LOW:  # le mod est tres important, too low donne 255
+                print(f'The number is too low: {end}')
+            elif begin == TOO_HIGH:
+                print(f'The number is too high than {end}')
+            elif begin == LOOSE:
+                print(f'YOU LOOSE, number= {end}')
+                cfd.close()
+                break
+            guess = int(input(f"Ecrire ton guess entre: {begin} {end}\n"))
+            if mode == 0:
+                packed = struct.pack('ii', 0, guess)
+            if mode == 1:
+                packed = struct.pack('i', guess)
+            if mode == 2:
+                packed = struct.pack('>H', guess)
+                print(f"sent: {begin}, sent_packed_data: {packed} ")
+            if mode == 3:
+                packed = struct.pack('ii', 0, guess)
+
+            print(f"sent: {guess}, sent_packed_data: {packed} ")
+            cfd.sendall(packed)
+        cfd.close()
+
+    @test
     def client_request(self, cfd):
         sys.stdout.flush()
-        end, start = struct.unpack('BB', cfd.recv(2))
-        #'BB': two byte sized ints
-        #retourne deux objects d'unpacked format, ici c'est u_int8t
+        mode = 0
+        for i in range(NB_TRY):
+            data = cfd.recv(8)
+            try:
+                begin, end = struct.unpack('ii', data)
+            except (SyntaxError, struct.error) as e:
+                try:
+                    begin, end = struct.unpack('HH', data)
+                    mode = 1
+                except (SyntaxError, struct.error) as e:
+                    try:
+                        begin, end = struct.unpack('BB', data)
+                        mode = 2
+                    except:
+                        begin, end = struct.unpack('B', data)
+                        mode = 3
+            switch = {
+                TOO_HIGH: 'High',
+                TOO_LOW: 'Low',
+                WIN: 'Win',
+                LOOSE: 'Lose'
+            }
+            if begin == WIN:
+                if i > 0:
+                    print(f'WIN! You guessed the number {end}')
+                    break
+            elif begin == TOO_LOW % 256:  # le mod est tres important, too low donne 255
+                print(f'The number is higher than {end}')
+            elif begin == TOO_HIGH:
+                print(f'The number is lower than {end}')
 
-        #status = cfd.recv(1).decode('utf-8')  # donnèes entrantes du serveur #doesn't work
-        #data = ctypes.c_int8(int(cfd.recv(1)))
-        # u_int8t n'existe pas en Py, on utilise ctypes
-        #status = ctypes.c_int8(int(status))
-        print(end, start)
+            print(f"mode = {mode}\ntaille = {len(data)}\n")
+            print(f"received: {begin, end}\nrecv_packed_data: {data}\n")
+            print(f"\n---- TRY ---- {i}\n")
 
-        guess = random.randint(0, 255)  #on envoit un guess random au début, pour recevoir la réponse correcte
+            if mode == 0:
+                packed = struct.pack('ii', 0, end)
+            if mode == 1:
+                packed = struct.pack('i', end)
+            if mode == 2:
+                packed = struct.pack('>H', begin)
+                print(f"sent: {begin}, sent_packed_data: {packed} ")
+            if mode == 3:
+                packed = struct.pack('ii', 0, end)
 
-        buf = (guess << 8) | 0  # GUESS | 0 0 0 0 0 0 0 0 0 pour que le second byte soit set to 0
-        client_socket.sendall(struct.pack('>H', buf))
-        #>H: signed short integer, 2 octets, big endian >
+            print(f"sent: {begin}, sent_packed_data: {packed} ")
+            cfd.sendall(packed)
+        cfd.close()
 
-        data = client_socket.recv(2)
-        number, response = struct.unpack('>BB', data)
-        print(response, number)
 
-        buf = number | 0  # GUESS | 0 0 0 0 0 0 0 0 0 pour que le second byte soit set to 0
-        client_socket.sendall(struct.pack('>H', buf))
-
-        data = client_socket.recv(2)
-        number, response = struct.unpack('>BB', data)
-        print(response, number)
-        #ça sera une fonction handle, pour tester low, high, etc..
-        switch = {
-            TOO_HIGH: 'High',
-            TOO_LOW: 'Low',
-            WIN: 'Win',
-            LOOSE: 'Lose'
-        }
-        if response == WIN:
-            print(f'WIN! You guessed the number {number}')
-
-        elif response == TOO_LOW % 256: #le mod est tres important, too low donne 255
-            print(f'The number is higher than {guess}')
-            start = number
-        elif response == TOO_HIGH:
-            print(f'The number is lower than {guess}')
-            end = number
-
-    def multiple_clients_test(self, port, n):
+    def handle_client(self):
+        client_socket = t.connect_to_server(IP, PORT)
+        self.client_request(client_socket)
+    @test
+    def multiple_clients_test_interactive(self, n):
+        # liste des processus
+        processes = []
         for i in range(n):
+            p = multiprocessing.Process(target=self.handle_client)
+            p.start()
+            processes.append(p)
 
-            #getting a valid ip
-            host = self.generate_random_ip()
-            #while (self.check_ip_in_use(host, port)):
-            #    host = self.generate_random_ip()
-            #connect to server function
-            client_socket = self.connect_to_server(host, port)
-            #test connection
+        # Wait for all client processes to finish
+        for p in processes:
+            p.join(5)  # blocks until the process whose join() method is called terminates
+        self.wait()
+        for p in processes:
+            p.terminate()  # ne marche pas
+
+    @test
+    def client_process(self):
+        # connect to server function
+        client_socket = self.connect_to_server(IP, PORT)
+        while True:
+            data = client_socket.recv(8)
+            client_socket.sendall(bytearray(2))
+            # test connection
             self.test_connect(client_socket)
+
+    @test
+    def multiple_clients_test_dummy(self, n):
+        # liste des processus
+        processes = []
+        for i in range(n):
+            p = multiprocessing.Process(target=self.client_process)
+            p.start()
+            processes.append(p)
+
+        # Wait for all client processes to finish
+        for p in processes:
+            p.join(5) #blocks until the process whose join() method is called terminates
+
+        for p in processes:
+            p.terminate() #ne marche pas
 
 
 if __name__ == "__main__":
@@ -155,6 +256,7 @@ if __name__ == "__main__":
     parser.add_argument('program_name', type=str, help='path de votre programme digest')
     parser.add_argument('port', type=int, help='port number for server connection')
     parser.add_argument('-i', '--ip_adress', type=str, help='prend une adresse ip comme agrument')
+    parser.add_argument('-p', action='store_true', help='test toi même  les valeurs à envoyer au Serveur')
     args = parser.parse_args()
     program_name = args.program_name
     PORT = args.port
@@ -162,8 +264,13 @@ if __name__ == "__main__":
         IP = args.ip_adress
     t = Test()
     print(bcolors.Magenta + '--- BEGIN TEST ---\n' + bcolors.ENDC)
+    t.launch_program()
     client_socket = t.connect_to_server(IP, PORT)
     t.test_connect(client_socket)
-    #t.multiple_clients_test(PORT, number_servers)
-    t.client_request(client_socket)
+    if args.p:
+        t.play(client_socket)
+    else:
+        t.client_request(client_socket)
+        t.multiple_clients_test_interactive(number_servers)
+        t.multiple_clients_test_dummy(number_servers)
     print(bcolors.Magenta + '--- END TEST ---' + bcolors.ENDC)
