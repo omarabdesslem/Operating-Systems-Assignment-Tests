@@ -1,9 +1,0 @@
-Sending proposition: 63
-The true value is: 50, but I am not supposed to know about it.
-Sending proposition: 34
-The true value is: 50, but I am not supposed to know about it.
-Sending proposition: 49
-The true value is: 50, but I am not supposed to know about it.
-Sending proposition: 56
-The true value is: 50, but I am not supposed to know about it.
-I miserably lost...
