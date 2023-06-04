@@ -53,6 +53,7 @@ class bcolors:
         self.Black = ''
         self.ENDC = ''
 
+#Fonction wrapper, prends un nombre variable d'arguments, afin de s'appliquer à toutes les fonctions
 
 def test(func, *args):
     def wrapper(self, *args):
@@ -71,10 +72,13 @@ def test(func, *args):
 
 
 class Test():
+
+
     def wait(self):
         period = random.uniform(2, 3)
         time.sleep(period)
         return 0
+        
     def kill_terminal(self):
         if sys.platform == 'win32':
             subprocess.Popen('taskkill /IM cmd.exe /F', shell=True)
@@ -117,18 +121,9 @@ class Test():
     # si session graphique => nouv terminal, sinon tout sur le meme terminal
     # lancer le terminal avec cette commande, shell = True pour prendre la commande en totale, pas comme une liste d'args
     @test
-    def try_launch_server_program(self):
+    def try_launch_program(self,*program_arguments):
         try:
-            subprocess.check_output([f"{program_name}", str(self.generate_port())], timeout=3)
-        except subprocess.TimeoutExpired:
-            pass
-        except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError) as e:
-            raise Exception(str(e))
-
-    @test
-    def try_launch_client_program(self):
-        try:
-            subprocess.check_output([f"{program_name}", str(IP), str(PORT)], timeout=3)
+            subprocess.check_output([f"{program_name}", *program_arguments], timeout=3)
         except subprocess.TimeoutExpired:
             pass
         except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError) as e:
@@ -136,10 +131,10 @@ class Test():
 
     def launch_program(self, program_type):
         if program_type == "server":
-            self.try_launch_server_program()
+            self.try_launch_program(str(self.generate_port()))
             terminal_command = self.get_terminal_command_type_server(program_name, str(PORT))
         else:
-            self.try_launch_client_program()
+            self.try_launch_program(str(IP), str(PORT))
             terminal_command = self.get_terminal_command_type_client(program_name, str(IP), str(PORT))
 
         if self.check_interface_graphique:
@@ -161,18 +156,26 @@ class Test():
         return client_socket
 
     def check_port_in_use(self, port):
-        command = f"netstat -an | grep -w {port}"
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        if DEBUG == 1:
-            print(result)
-        return len(result.stdout.strip()) != 0
+        try:
+            # Malheureusement, netstat (qui recupére plus d'info de debug n'est pas dispo sur tout les sys d'exps ==> mèthode bind) Création de la socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Liaison de la socket à l'adresse et au port spécifiés
+            sock.bind(('localhost', port))
+            return False 
+        except socket.error:
+            if DEBUG == 1:
+                print("Le port est déjà utilisé")
+            return True 
+        finally: #ferme le socket deja créer
+            sock.close()
 
     @test
     def test_connect(self, client_socket):
         if client_socket is None:
             raise Exception(f"Client server connection failed")
 
-    def client_receive(self, cfd):
+
+    def client_receive_2(self, cfd):
         sys.stdout.flush()
         data = cfd.recv(8)
         if len(data) == 0:
@@ -198,37 +201,78 @@ class Test():
             return first_half, second_half, mode, data
 
 #function g(f, [bytes])
-    def interact(self, pack_unpack_function, array_of_types, data):
-        for i in (array_of_types):
-            pack_unpack_function(array_of_types[i], data)
-            
+    def unpack_and_determine_mode(self, data, array_of_types):
+
+        #cas facile
+        if len(data) == 0:
+            print("End of client reception")
+            return 0, 0 ,0 ,0
+        if len(data) == 1:
+            return data, data, 3
+
+        #determine 
+        for type_number in range(len(array_of_types)):
+            try:
+                begin, end = struct.unpack(array_of_types[type_number], data)
+                mode = type_number
+                if DEBUG == 1:
+                    print(f"Unpacked first message: {begin}, {end}. Mode = {mode}")
+                return begin, end, mode
+            except (SyntaxError, struct.error) as e:
+                {}
+        #après avoir essayer tout les types suggérés
+        print("Unsupport data size received, length= {len(data)}")
+        return -1,-1,0
+
+    def pack_unpack_data(self, pack_unpack_function, array_of_types, data, mode):
+        try:
+            unpacked_packed_data = (pack_unpack_function(array_of_types[mode], data))
+            return mode, unpacked_packed_data
+        except (SyntaxError, struct.error) as e:
+            print("Unsupport data size, length= {len(data)}")
+       
+
+
     def client_send(self, cfd, guess, mode):
+        data_to_send = self.pack_unpack_data(struct.pack, ['ii', 'i', '>H','>H'], guess, mode)
+        (mode, data) = data_to_send
+        if DEBUG == 1:
+            print(f"GUESS IS {guess}, DATA TO SEND {data}")
+        cfd.sendall(bytes(data))
+        if DEBUG ==1:
+            print(f"sent in bytes: {data}")
+        return 
+    
 
-        if mode == 0:
-            packed = struct.pack('ii', 0, guess)
-        if mode == 1:
-            packed = struct.pack('i', guess)
-        if mode == 2:
-            packed = struct.pack('>H', guess)
-        if mode == 3:
-            packed = struct.pack('ii', 0, guess)
-        cfd.sendall(packed)
-        return 0
+    def client_receive(self, cfd, mode):
+        sys.stdout.flush()
+        data = cfd.recv(8)
+        mode,data_received = self.pack_unpack_data(struct.unpack, ['ii', 'HH', 'BB', 'B'], data, mode)
+        if DEBUG == 1:
+            print(f"unpacked_data = {data_received}")
+        return data_received[0],  data_received[1]
 
-    def client_request(self, cfd, type):
-        min, max, mode, data = self.client_receive(cfd)
+    def determine_correct_order(self,min, max):
         correct_order = 0
         if min > max:
             correct_order = 1
             switcher = min
             min = max
             max = switcher
+        return min, max, correct_order
+
+    def client_request(self, cfd, type):
+        sys.stdout.flush()
+        data = cfd.recv(8)
+        min, max , mode= self.unpack_and_determine_mode(data, ['ii', 'HH', 'BB', 'B'])
+        min,max,ordre = self.determine_correct_order(min,max)
 
         guess = random.randrange(min, max)
         self.client_send(cfd, guess, mode)
+
         saved_sent = guess
         for try_number in range(NB_TRY):
-            first_half, second_half, mode, data = self.client_receive(cfd)
+            first_half, second_half = self.client_receive(cfd, mode)
             if data == 0:
                 break
             if DEBUG == 1:
@@ -253,6 +297,8 @@ class Test():
             }
             if first_half == WIN:
                 if try_number > 0:
+                    if DEBUG == 1:
+                        print("WIN")
                     break
             if first_half == TOO_HIGH:
                 if type == 2:
@@ -278,7 +324,7 @@ class Test():
         # fermer les deux terminaux
         if DEBUG:
             print("taille reçue =", len(data), "octets")
-        return correct_order, mode
+        return ordre, mode
 
     def play(self, cfd):
         self.client_request(cfd, 0)
@@ -371,22 +417,7 @@ class Test():
         if DEBUG == 1:
             print(f"number : {received_number}, Bytes: {data}")
         return received_number
-        """
-        try:
-            guess = struct.unpack('ii', data)
-            mode = 0
-        except (SyntaxError, struct.error) as e:
-            try:
-                guess = struct.unpack('!H', data)[0]
-                mode = 1
-            except (SyntaxError, struct.error) as e:
-                try:
-                    guess = struct.unpack('!B', data)[0]
-                    mode = 2
-                except:
-                    guess = struct.unpack('!B', data)
-                    mode = 3
-                    """
+
     @test
     def Guessing_Game_Interaction_Test(self, client_socket):
         mode = self.send_range(client_socket)
