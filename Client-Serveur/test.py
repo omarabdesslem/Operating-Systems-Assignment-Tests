@@ -8,8 +8,7 @@ import subprocess
 import time  # for waiting
 import os
 import threading
-import signal
-
+##TOO HIGH AVANT
 ##valeurs par defaults
 number_servers = 3
 NB_TRY = 10
@@ -89,37 +88,18 @@ class Test():
         return display is not None
 
     def get_terminal_command_type_server(self, prog_name, port):
-        terminal_type = os.environ.get('TERM')
+
         if DEBUG == 1:
-            print(f"Terminal type: {terminal_type}")
-        if terminal_type and 'xterm' in terminal_type:
-            terminal_command = f'gnome-terminal -- bash -c "{prog_name} {str(port)}; exec bash"'
-        elif terminal_type and 'cmd' in terminal_type:
-            terminal_command = f'start cmd /k "{prog_name} {str(port)}"'
-        elif 'linux' in terminal_type:
-            if DEBUG == 1:
-                terminal_command = f'{prog_name} {str(port)}'
-            else:
-                terminal_command = f'{prog_name} {str(port)} > /dev/null 2>&1'
+            terminal_command = f'{prog_name}  {str(port)} > server.txt 2>&1'
         else:
-            raise Exception(f"Unsupported terminal type: {terminal_type}")
+            terminal_command = f'{prog_name}  {str(port)} > /dev/null 2>&1'
         return terminal_command
 
     def get_terminal_command_type_client(self, prog_name, ip, port):
-        terminal_type = os.environ.get('TERM')
         if DEBUG == 1:
-            print(f"Terminal type: {terminal_type}")
-        if terminal_type and 'xterm' in terminal_type:
-            terminal_command = f'gnome-terminal -- bash -c "{prog_name} {str(ip)} {str(port)}; exec bash"'
-        elif terminal_type and 'cmd' in terminal_type:
-            terminal_command = f'start cmd /k "{prog_name} {str(ip)}  {str(port)}"'
-        elif 'linux' in terminal_type:
-            if DEBUG == 1:
-                terminal_command = f'{prog_name} {str(ip)} {str(port)}'
-            else:
-                terminal_command = f'{prog_name} {str(ip)} {str(port)} > /dev/null 2>&1'
+            terminal_command = f'{prog_name} {str(ip)} {str(port)} > client.txt 2>&1'
         else:
-            raise Exception(f"Unsupported terminal type: {terminal_type}")
+            terminal_command = f'{prog_name} {str(ip)} {str(port)} > /dev/null 2>&1'
         return terminal_command
 
     def generate_port(self):
@@ -171,23 +151,6 @@ class Test():
         self.wait()
         return launched_terminal
 
-    def free_port(self, port):
-        # Create a socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Set the SO_REUSEADDR option
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            # Bind the socket to the desired address and port
-            sock.bind(('localhost', port))
-            print(f"Port {port} is now free.")
-        except OSError as e:
-            print(f"Failed to free port {port}: {e}")
-        finally:
-            # Close the socket
-            sock.close()
-
     def connect_to_server(self, host, port):
         # create socket
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -234,6 +197,11 @@ class Test():
                         mode = 3
             return first_half, second_half, mode, data
 
+#function g(f, [bytes])
+    def interact(self, pack_unpack_function, array_of_types, data):
+        for i in (array_of_types):
+            pack_unpack_function(array_of_types[i], data)
+            
     def client_send(self, cfd, guess, mode):
 
         if mode == 0:
@@ -289,11 +257,11 @@ class Test():
             if first_half == TOO_HIGH:
                 if type == 2:
                     if saved_sent <= correct_number:
-                        raise Exception(f"TOO HIGH NOT WORKING: sent : {saved_sent} <= {correct_number} ")
+                        raise Exception(f"TOO HIGH NOT WORKING: sent : {saved_sent} <= {correct_number}, check if inputed the right values -v, and right number of tries ")
             elif first_half == TOO_LOW:
                 if type == 2:
                     if saved_sent >= correct_number:
-                        raise Exception(f"TOO LOW NOT WORKING: sent : {saved_sent} <= {correct_number} ")
+                        raise Exception(f"TOO LOW NOT WORKING: sent : {saved_sent} <= {correct_number}, check if inputed the right values -v, and right number of tries ")
             elif first_half == LOOSE:
                 if try_number > 1:
                     if type == 2:
@@ -356,16 +324,6 @@ class Test():
             print("Result = ", end='')
             raise AssertionError
 
-    @test
-    def client_process(self):
-        # connect to server function
-        client_socket = self.connect_to_server(IP, PORT)
-        while True:
-            data = client_socket.recv(8)
-            client_socket.sendall(bytearray(2))
-            # test connection
-            self.test_connect(client_socket)
-
     def terminate_process_by_port(self, port):
         # Exemple écrit sur le terminal: $ lsof -t -i 53140
         command = f'lsof -t -i :{port}'
@@ -408,7 +366,6 @@ class Test():
             cfd.close()
             return "belle_fin"
 
-
         received_number = int.from_bytes(data, byteorder='big')
         received_number = received_number & 0xFF  # Mask to keep only the least significant byte
         if DEBUG == 1:
@@ -440,6 +397,7 @@ class Test():
             # handle incoming data
             guess = self.server_receive(client_socket)
             if guess == number_to_guess:
+                print(f"YOU WIN! Guessed {number_to_guess}")
                 guess = "belle_fin"
                 break
             if DEBUG == 1:
@@ -455,8 +413,7 @@ class Test():
             # if more than NB_TRY, LOOSING PART:
             client_socket.send((LOOSE & 0xFF).to_bytes(1, byteorder='big'))
             client_socket.send((number_to_guess & 0xFF).to_bytes(1, byteorder='big'))
-            print("YOU LOSE!")
-            raise Exception("CLIENT LOST")
+            raise Exception("LOST!, Values [HIGH,LOW, WIN, LOSE] or number of tries may not be matching. -v to change values")
         print("Resultat du Guessing Game Interaction Test= ", end='')
         # close connection
         client_socket.close()
@@ -494,21 +451,6 @@ class Test():
         server_socket.close()
         print("Resultat du Test Client Etudiant= ", end='')
         t.kill_terminal()
-        """
-            # fork pour créer des procs enfants
-            pid = os.fork()
-
-            if pid == 0:
-                # process enfant
-                self.Guessing_Game_Interaction_Test(client_socket)
-                server_socket.close()  # fermer le serveur du proc enfant
-                os._exit(0)  # fermer child process
-            else:
-                # parent process
-                client_socket.close()  
-        server_socket.close()
-"""
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test pour verifier le bon fonctionnement de votre TP')
@@ -520,19 +462,20 @@ if __name__ == "__main__":
                         help='DEBUGGING MODE: montre les donnèes reçues,envoyées,leurs tailles')
     parser.add_argument('-v', '--values', type=str,
                         help='choisir les valeurs High/Low/Win/lose comme liste: Exemple: [1,-1,0,-2]')
-    parser.add_argument('-n', '--trynumber', type=int, help="nombre d essai pour LOSE")
+    parser.add_argument('try_number', type=int, help="nombre d essai pour LOSE, obligatoire pour le bon test de LOSE")
     parser.add_argument('-c', action='store_true',
                         help='Test Client, ./test name_client_program -c')
 
+##options obligatoire number tests
     args = parser.parse_args()
     program_name = args.program_name
     PORT = args.port
     t = Test()
+    NB_TRY = args.try_number
+    print(bcolors.Magenta + "Try number changed to:" + bcolors.ENDC + f"\n{NB_TRY} tries ")
+
     if args.d:
         DEBUG = 1
-    if args.trynumber:
-        NB_TRY = args.trynumber
-        print(bcolors.Magenta + "Try number changed to:" + bcolors.ENDC + f"\n{NB_TRY} tries ")
     if args.values:
         values = args.values.strip('[]').split(',')
         TOO_HIGH = int(values[0])
@@ -545,9 +488,10 @@ if __name__ == "__main__":
         IP = args.ip_adress
 
     if t.check_port_in_use(PORT):
-        print(f"PORT {PORT} UTILISÉ.")
-        print(f"Si vous avez fait un test il y a quelques secondes avec ce port. Il faut attendre 60 secondes sur Linux pour que le port soit de nouveau accessible.\nL'état TIME-WAIT permet d'éviter que des segments en retard ne soient acceptés dans une connexion différente")
+        print(bcolors.Magenta+ f"PORT {PORT} UTILISÉ." + bcolors.ENDC)
+        print(f"Il faut attendre 60 secondes sur Linux pour que le port soit de nouveau accessible.L'état TIME-WAIT permet d'éviter que des segments en retard ne soient acceptés dans une connexion différente")
         PORT = t.generate_port()
+        print(f"Nouveau Port: {PORT}")
     print(bcolors.Magenta + '--- BEGIN TEST ---\n' + bcolors.ENDC)
     if args.c:
         # Client Test
