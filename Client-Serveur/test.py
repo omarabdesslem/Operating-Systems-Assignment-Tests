@@ -8,6 +8,8 @@ import subprocess
 import time  # for waiting
 import os
 import threading
+import signal
+
 ##TOO HIGH AVANT
 ##valeurs par defaults
 number_servers = 3
@@ -19,13 +21,14 @@ LOOSE = 2
 F_MASK = 0xFF
 
 IP = "127.0.0.1"
-AUTONOMOUS = 1
-USER_CHOICE = 0
+AUTONOMOUS_TYPE = 1
+USER_CHOICE_TYPE = 0
+HIGHER_THAN_LOWER_THAN_TEST_TYPE = 2
 test_failed = False
 DEBUG = 0  # var globale resets à chaque lancement
 Multi_CLIENT_ERROR = 0
 Warnings = []
-Higher_than_Lower_than_test_mode = 2
+LOGS_PRINT = 0
 
 
 # binary color class
@@ -53,50 +56,39 @@ class bcolors:
         self.Black = ''
         self.ENDC = ''
 
-#Fonction wrapper, prends un nombre variable d'arguments, afin de s'appliquer à toutes les fonctions
 
+#Fonction wrapper, prends un nombre variable d'arguments, afin de s'appliquer à toutes les fonctions, ajouter un failed timeout
 def test(func, *args):
     def wrapper(self, *args):
         global test_failed
         print(func.__name__.upper() + ": ", end="")
         try:
             func(self, *args)
+        except TimeoutError:
+            print(bcolors.Red + "TIMEOUT" + bcolors.ENDC)
+            test_failed = True
         except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError) as e:
             print(bcolors.Red + "FAILED" + bcolors.ENDC)
             print(str(e))
             test_failed = True
         else:
             print(bcolors.Green + "SUCCESS" + bcolors.ENDC)
-
     return wrapper
 
-
 class Test():
-
 
     def wait(self):
         period = random.uniform(2, 3)
         time.sleep(period)
         return 0
-        
-    def kill_terminal(self):
-        if sys.platform == 'win32':
-            subprocess.Popen('taskkill /IM cmd.exe /F', shell=True)
-        elif sys.platform == 'darwin':
-            subprocess.Popen(['osascript', '-e', 'quit app "Terminal"'])
-        elif sys.platform.startswith('linux'):
-            subprocess.Popen(['killall', 'bash'])
 
-    def check_interface_graphique(self):  # tester si le terminal est graphique avec $Display
-        display = os.environ.get('DISPLAY')
-        return display is not None
-
-    def get_terminal_command_type_server(self, prog_name, port):
-
+    def get_terminal_command_type_server(self,prog_name, port):
         if DEBUG == 1:
-            terminal_command = f'{prog_name}  {str(port)} > server.txt 2>&1'
+            terminal_command = f'{prog_name} {str(port)} > server.txt 2>&1' #Pipe qui fait output redirect de stdout et stderr vers le fichier log.txt
+        if LOGS_PRINT:
+            terminal_command = f'{prog_name} {str(port)}' #standard output directement sur la console
         else:
-            terminal_command = f'{prog_name}  {str(port)} > /dev/null 2>&1'
+            terminal_command = f'{prog_name} {str(port)} > /dev/null 2>&1' #Pipe redirect vers fichier null
         return terminal_command
 
     def get_terminal_command_type_client(self, prog_name, ip, port):
@@ -137,14 +129,11 @@ class Test():
             self.try_launch_program(str(IP), str(PORT))
             terminal_command = self.get_terminal_command_type_client(program_name, str(IP), str(PORT))
 
-        if self.check_interface_graphique:
-            launched_terminal = subprocess.Popen(terminal_command, shell=True)
-        else:
-            os.system(terminal_command)
+        launched_process = subprocess.Popen(terminal_command, shell=True, preexec_fn=os.setsid)
         if DEBUG == 1:
             print(f"Launched program with terminal command:{terminal_command}")
         self.wait()
-        return launched_terminal
+        return launched_process
 
     def connect_to_server(self, host, port):
         # create socket
@@ -175,31 +164,6 @@ class Test():
             raise Exception(f"Client server connection failed")
 
 
-    def client_receive_2(self, cfd):
-        sys.stdout.flush()
-        data = cfd.recv(8)
-        if len(data) == 0:
-            print("End of client reception")
-            return 0, 0 ,0 ,0
-        if len(data) == 1:
-            return data, data, 3, data
-        else:
-            try:
-                first_half, second_half = struct.unpack('ii', data)
-                mode = 0
-            except (SyntaxError, struct.error) as e:
-                try:
-                    first_half, second_half = struct.unpack('HH', data)
-                    mode = 1
-                except (SyntaxError, struct.error) as e:
-                    try:
-                        first_half, second_half = struct.unpack('BB', data)
-                        mode = 2
-                    except:
-                        first_half, second_half = struct.unpack('B', data)
-                        mode = 3
-            return first_half, second_half, mode, data
-
 #function g(f, [bytes])
     def unpack_and_determine_mode(self, data, array_of_types):
 
@@ -221,33 +185,44 @@ class Test():
             except (SyntaxError, struct.error) as e:
                 {}
         #après avoir essayer tout les types suggérés
-        print("Unsupport data size received, length= {len(data)}")
+        print(f"Unsupport data size received, length= {data}")
         return -1,-1,0
 
-    def pack_unpack_data(self, pack_unpack_function, array_of_types, data, mode):
+    def try_all_modes_pack_unpack(self,pack_unpack_function, array_of_types,data):
+        for data_type in array_of_types:
+            try:
+                unpacked_packed_data = (pack_unpack_function(data_type,  data))
+                return unpacked_packed_data, 0
+            except (SyntaxError, struct.error) as e:{}
+        return None, 1
+
+    def direct_pack_unpack_data(self, pack_unpack_function, array_of_types, data, mode):
         try:
-            unpacked_packed_data = (pack_unpack_function(array_of_types[mode], data))
+            unpacked_packed_data = (pack_unpack_function(array_of_types[mode],  data))
             return mode, unpacked_packed_data
         except (SyntaxError, struct.error) as e:
-            print("Unsupport data size, length= {len(data)}")
-       
+            (data, function_result) = self.try_all_modes_pack_unpack(pack_unpack_function, array_of_types, data)
+            if function_result == 1:
+                print(f"Unsupport data size")
 
 
     def client_send(self, cfd, guess, mode):
-        data_to_send = self.pack_unpack_data(struct.pack, ['ii', 'i', '>H','>H'], guess, mode)
-        (mode, data) = data_to_send
+        if mode == 0:
+            data_to_send = struct.pack('ii', 0, guess)
+            data_to_show = data_to_send
+        else:
+            data_to_send = self.direct_pack_unpack_data(struct.pack, ['ii', 'ii', '>H', '>H'], guess, mode)
+            (mode, data_to_show) = data_to_send
         if DEBUG == 1:
-            print(f"GUESS IS {guess}, DATA TO SEND {data}")
-        cfd.sendall(bytes(data))
-        if DEBUG ==1:
-            print(f"sent in bytes: {data}")
+            print(f"GUESS IS {guess}, DATA TO SEND {data_to_show}")
+        cfd.sendall(bytes(data_to_show))
         return 
     
 
     def client_receive(self, cfd, mode):
         sys.stdout.flush()
         data = cfd.recv(8)
-        mode,data_received = self.pack_unpack_data(struct.unpack, ['ii', 'HH', 'BB', 'B'], data, mode)
+        mode,data_received = self.direct_pack_unpack_data(struct.unpack, ['ii', 'HH', 'BB', 'B'], data, mode)
         if DEBUG == 1:
             print(f"unpacked_data = {data_received}")
         return data_received[0],  data_received[1]
@@ -262,6 +237,7 @@ class Test():
         return min, max, correct_order
 
     def client_request(self, cfd, type):
+        cfd.settimeout(10)
         sys.stdout.flush()
         data = cfd.recv(8)
         min, max , mode= self.unpack_and_determine_mode(data, ['ii', 'HH', 'BB', 'B'])
@@ -277,7 +253,7 @@ class Test():
                 break
             if DEBUG == 1:
                 print(f"received: {first_half, second_half}  sent: {guess}")
-            if type != USER_CHOICE:
+            if type != USER_CHOICE_TYPE:
                 guess = second_half
                 if try_number > 1:
                     guess = first_half
@@ -313,7 +289,7 @@ class Test():
                     if type == 2:
                         if try_number != NB_TRY-1:
                             raise Exception(
-                                f"LOST before correct number of tries: program try number : {try_number}!= {NB_TRY} number of maximum assigned tries ")
+                                f"LOST before correct number of tries: program try number : {try_number+1}!= {NB_TRY} number of maximum assigned tries ")
                     break
             saved_sent = guess
             self.client_send(cfd, guess, mode)
@@ -323,7 +299,7 @@ class Test():
         # au debut, on verifie si le port est utilisé ==> warning et stop, correction message TOO HIGH, corriger le fait qu'on il pert, socket.close()
         # fermer les deux terminaux
         if DEBUG:
-            print("taille reçue =", len(data), "octets")
+            print(f"taille reçue = {len(data)} octets")
         return ordre, mode
 
     def play(self, cfd):
@@ -332,28 +308,29 @@ class Test():
 
     @test
     def single_client_request(self, cfd):
+        cfd.settimeout(10)
         correct_order, mode = self.client_request(cfd, 1)
         if correct_order == 1 and DEBUG == 0:
             Warnings.append(
                 "Warning! Majorant de l'intervalle >> minorant. Mode Debug -d vous donnera plus de details.")
-
         if mode != 2 and DEBUG == 0:
             Warnings.append(
-                "Warning! Majorant de l'intervalle >> minorant. Mode Debug -d vous donnera plus de details.")
+                "Warning! Taille des donnèes reçu n'est pas égales à 2 octets. Mode Debug -d vous donnera plus de details. ")
 
         if DEBUG:
             print("Result = ", end='')
         return cfd
 
     def handle_server(self):
-        result = 0
+        global Multi_CLIENT_ERROR
         client_socket = t.connect_to_server(IP, PORT)
         try:
+            client_socket.settimeout(10)  # Set the timeout to 10 seconds
             self.client_request(client_socket, 1)
-        except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError) as e:
+        except (AssertionError, FileNotFoundError, Exception, OSError, AttributeError, socket.timeout) as e:
             print(str(e))
-            result = 1
-        return result
+            Multi_CLIENT_ERROR = 1
+        return Multi_CLIENT_ERROR
 
     @test
     def multiple_clients_test_interactive(self, n):
@@ -370,19 +347,6 @@ class Test():
             print("Result = ", end='')
             raise AssertionError
 
-    def terminate_process_by_port(self, port):
-        # Exemple écrit sur le terminal: $ lsof -t -i 53140
-        command = f'lsof -t -i :{port}'
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE)  # Popen donne return code, mais subprocess.check_ouptut non
-        output, error = process.communicate()  # similaire à check output pour Popen
-
-        if process.returncode == 0:
-            pid = int(output.decode().strip())
-            subprocess.run(['kill', str(pid)])
-            if DEBUG == 1:
-                print(f"Server killed: {pid}")
-
     @test
     def test_too_high_too_low_lose(self, cfd):
         self.client_request(cfd, 2)
@@ -391,30 +355,31 @@ class Test():
 
     def create_msg(self, correct_number, received_guess):
         if received_guess == correct_number:
-            if DEBUG ==1:
+            if DEBUG:
                 print("YOU WIN!")
             return [WIN, correct_number]
         elif received_guess > correct_number:
-            if DEBUG ==1:
+            if DEBUG:
                 print("TOO HIGH!")
             return [TOO_HIGH, correct_number]
         elif received_guess < correct_number:
-            if DEBUG ==1:
+            if DEBUG:
                 print("TOO HIGH!")
             return [TOO_LOW, correct_number]
 
     def server_receive(self, cfd):
+        cfd.settimeout(50)
         sys.stdout.flush()
         data = cfd.recv(2)
         if len(data) == 0:
-            if DEBUG == 1:
+            if DEBUG:
                 print("Fin du test. Pas de données reçues")
             cfd.close()
             return "belle_fin"
 
         received_number = int.from_bytes(data, byteorder='big')
         received_number = received_number & 0xFF  # Mask to keep only the least significant byte
-        if DEBUG == 1:
+        if DEBUG:
             print(f"number : {received_number}, Bytes: {data}")
         return received_number
 
@@ -481,7 +446,7 @@ class Test():
         self.Guessing_Game_Interaction_Test(client_socket)
         server_socket.close()
         print("Resultat du Test Client Etudiant= ", end='')
-        t.kill_terminal()
+        sys.exit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test pour verifier le bon fonctionnement de votre TP')
@@ -491,11 +456,12 @@ if __name__ == "__main__":
     parser.add_argument('-p', action='store_true', help='test toi même  les valeurs à envoyer au Serveur')
     parser.add_argument('-d', action='store_true',
                         help='DEBUGGING MODE: montre les donnèes reçues,envoyées,leurs tailles')
-    parser.add_argument('-v', '--values', type=str,
-                        help='choisir les valeurs High/Low/Win/lose comme liste: Exemple: [1,-1,0,-2]')
+    parser.add_argument('values', type=str,help='choisir les valeurs High/Low/Win/lose comme liste: Exemple: [1,-1,0,-2]')
     parser.add_argument('try_number', type=int, help="nombre d essai pour LOSE, obligatoire pour le bon test de LOSE")
     parser.add_argument('-c', action='store_true',
                         help='Test Client, ./test name_client_program -c')
+    parser.add_argument('-l', action='store_true',
+                        help='PRINT LOG DIRECTLY ON SCREEN (au cas où program_log.txt retourne vide par exemple)')
 
 ##options obligatoire number tests
     args = parser.parse_args()
@@ -507,20 +473,21 @@ if __name__ == "__main__":
 
     if args.d:
         DEBUG = 1
+    if args.l:
+        LOGS_PRINT = 1
     if args.values:
         values = args.values.strip('[]').split(',')
         TOO_HIGH = int(values[0])
         TOO_LOW = int(values[1])
         WIN = int(values[2])
         LOOSE = int(values[3])
-        print(
-            bcolors.Magenta + "Values changed to:" + bcolors.ENDC + f"\nTOO_HIGH={TOO_HIGH}, TOO_LOW={TOO_LOW}, WIN={WIN}, LOSE={LOOSE} ")
+        print(bcolors.Magenta + "Values changed to:" + bcolors.ENDC + f"\nTOO_HIGH={TOO_HIGH}, TOO_LOW={TOO_LOW}, WIN={WIN}, LOSE={LOOSE} ")
     if args.ip_adress:
         IP = args.ip_adress
 
     if t.check_port_in_use(PORT):
         print(bcolors.Magenta+ f"PORT {PORT} UTILISÉ." + bcolors.ENDC)
-        print(f"Il faut attendre 60 secondes sur Linux pour que le port soit de nouveau accessible.L'état TIME-WAIT permet d'éviter que des segments en retard ne soient acceptés dans une connexion différente")
+        print(f"Il faut attendre 60 - 120 secondes sur Linux pour que le port soit de nouveau accessible.Les états TIME-WAIT/TCP-WAIT permettent d'éviter que des segments en retard ne soient acceptés dans une connexion différente")
         PORT = t.generate_port()
         print(f"Nouveau Port: {PORT}")
     print(bcolors.Magenta + '--- BEGIN TEST ---\n' + bcolors.ENDC)
@@ -530,6 +497,9 @@ if __name__ == "__main__":
         launched_terminal = t.launch_program("client")
         t.TEST_CLIENT_ETUDIANT(server_client)
         print(bcolors.Magenta + '\n--- END TEST ---' + bcolors.ENDC)
+        if DEBUG:
+            print("Client log sauvegardé dans client.txt")
+
     else:
         # Server Test
         launched_terminal = t.launch_program("server")
@@ -545,12 +515,10 @@ if __name__ == "__main__":
             t.test_too_high_too_low_lose(client_socket)
             t.multiple_clients_test_interactive(number_servers)
             t.print_warnings()
-        print(bcolors.Magenta + '\n--- END TEST ---' + bcolors.ENDC)
-        if DEBUG == 1:
-            print(f"Terminal PID: {launched_terminal.pid}")
-        t.kill_terminal()
-        # t.terminate_process_by_port(PORT)
+            if DEBUG:
+                print("Server log sauvegardé dans server.txt")
 
-    # os.killpg(launched_terminal.pid, signal.SIGTERM)
-# os.killpg(os.getpgid(0), signal.SIGTERM)
-    sys.exit()
+        print(bcolors.Magenta + '\n--- END TEST ---' + bcolors.ENDC)
+        os.killpg(os.getpgid(launched_terminal.pid), signal.SIGTERM)
+        if DEBUG:
+            print(f"Terminal PID: {launched_terminal.pid}")
