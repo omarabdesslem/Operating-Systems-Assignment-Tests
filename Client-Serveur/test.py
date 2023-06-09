@@ -210,6 +210,7 @@ class Test():
         if mode == 0:
             data_to_send = struct.pack('ii', 0, guess)
             data_to_show = data_to_send
+
         else:
             data_to_send = self.direct_pack_unpack_data(struct.pack, ['ii', 'ii', '>H', '>H'], guess, mode)
             (mode, data_to_show) = data_to_send
@@ -219,9 +220,7 @@ class Test():
         return 
     
 
-    def client_receive(self, cfd, mode):
-        sys.stdout.flush()
-        data = cfd.recv(8)
+    def client_receive(self, data, mode):
         mode,data_received = self.direct_pack_unpack_data(struct.unpack, ['ii', 'HH', 'BB', 'B'], data, mode)
         if DEBUG == 1:
             print(f"unpacked_data = {data_received}")
@@ -248,9 +247,16 @@ class Test():
 
         saved_sent = guess
         for try_number in range(NB_TRY):
-            first_half, second_half = self.client_receive(cfd, mode)
+            sys.stdout.flush()
+            data = cfd.recv(8)
             if data == 0:
                 break
+            if len(data) == 0:
+                break
+            if data is None:
+                if try_number>1:
+                    data = 0
+            first_half, second_half = self.client_receive(data, mode)
             if DEBUG == 1:
                 print(f"received: {first_half, second_half}  sent: {guess}")
             if type != USER_CHOICE_TYPE:
