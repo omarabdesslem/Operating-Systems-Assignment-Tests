@@ -1,26 +1,27 @@
-# Tests OS
+# Guessing Game
 
+This repository contains a server-client based guessing game implemented in Python. The game is designed to help students better understand the expectations of a programming assignment.
 
+## Usage
 
-## Code du projet
-Ce dépôt est destiné à être utilisé dans le cadre du cours Applications informatiques:
-Projet 15: Aider les étudiant-e-s à mieux comprendre les attentes d'un TP
+This project includes Python tests for Operating Systems tutorials. The automated tests are intended to verify if the created programs work according to the specified requirements by testing various functionalities.
 
-## Utilisation
-Tests Python pour les TDs de Systèmes d'exploitation:
-Les tests automatisés, pour les travaux pratiques TP2 sur le hachage et TP5 sur le client-serveur, permettront de vérifier si les programmes créer fonctionnent conformément aux spécifications demandèes, en testant ces différentes fonctionnalités.
+### Hash
 
-## Explication de l'usage
-Hash:
+To run the hash test, use the following command:
 
+```
 ./path_to/test.py /path_to/program -optional_arguments
+```
 
-Client-Server example:
+### Client-Server Example
 
-./test.py ./TP-Correct/server 50000 [1,-1,0,2] 3
-./test.py ./TP-Correct/client 50000 [1,-1,0,2] 3  -c
+To run the client-server example test, use the following command:
 
+```
+./test.py ./TP-Correct/server 50000 [1,-1,0,2] 3 ./test.py ./TP-Correct/client 50000 [1,-1,0,2] 3 -c
+```
 
+## Project Status
 
-## Project status
-Fini.
+The project is completed.
